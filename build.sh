@@ -66,6 +66,7 @@ apk add --no-cache \
     git \
     jq \
     libtool \
+    linux-headers \
     ninja \
     pkgconf \
     python3
