@@ -1,0 +1,219 @@
+name: Build static Transmission binaries (release)
+
+# Run daily to check for new upstream releases, and allow manual triggering.
+on:
+  schedule:
+    - cron: '0 2 * * *'   # 02:00 UTC every day
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Transmission tag to build, e.g. 4.1.3 / Empty = latest.'
+        required: false
+        default: ''
+        type: string
+      force_rebuild:
+        description: 'Force rebuild even if this version was already released'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Detect whether transmission/transmission has a release we haven't built yet.
+  # --------------------------------------------------------------------------
+  check-version:
+    name: Check for New Release
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+    outputs:
+      version:        ${{ steps.release.outputs.version }}
+      version_num:    ${{ steps.release.outputs.version_num }}
+      release_body:   ${{ steps.release.outputs.release_body }}
+      should_build:   ${{ steps.check.outputs.should_build }}
+
+    steps:
+      - name: Fetch latest transmission release from transmission/transmission
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ -n "$INPUT_VERSION" ]]; then
+            VERSION="$INPUT_VERSION"
+            RELEASE_JSON=$(gh api "repos/transmission/transmission/releases/tags/$VERSION")
+          else
+            RELEASE_JSON=$(gh api repos/transmission/transmission/releases/latest)
+            VERSION=$(echo "$RELEASE_JSON" | jq -r .tag_name)
+          fi
+          VERSION_NUM="${VERSION#v}"
+          RELEASE_BODY=$(echo "$RELEASE_JSON" | jq -r '.body // ""')
+          echo "version=$VERSION"         >> "$GITHUB_OUTPUT"
+          echo "version_num=$VERSION_NUM" >> "$GITHUB_OUTPUT"
+          {
+            echo "release_body<<EOF"
+            echo "$RELEASE_BODY"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Latest upstream transmission: $VERSION"
+
+      - name: Check if this version is already released in this repository
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          FORCE="${{ inputs.force_rebuild || 'false' }}"
+
+          if gh api "repos/${{ github.repository }}/releases/tags/$VERSION" \
+               --silent 2>/dev/null; then
+            if [[ "$FORCE" == "true" ]]; then
+              echo "Release $VERSION already exists but force_rebuild=true. Rebuilding."
+              echo "should_build=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Release $VERSION already exists. Skipping build."
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "Release $VERSION not found in this repository. Scheduling build."
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # --------------------------------------------------------------------------
+  # Build the static binary for each target architecture.
+  # Both amd64 and arm64 jobs run in parallel; arm64 uses QEMU emulation.
+  # --------------------------------------------------------------------------
+  build:
+    name: Build (${{ matrix.arch }})
+    needs: check-version
+    if: needs.check-version.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, amd64-gracemont, amd64-tremont, amd64-v3, arm64]
+        include:
+          - arch: amd64
+            platform: amd64
+          - arch: amd64-gracemont
+            platform: amd64
+          - arch: amd64-tremont
+            platform: amd64
+          - arch: amd64-v3
+            platform: amd64
+          - arch: arm64
+            platform: arm64
+    outputs:
+      alpine_version: ${{ steps.alpine.outputs.version }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU for arm64 cross-compilation
+        if: matrix.arch == 'arm64'
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+
+      - name: Read Alpine version number from alpine:latest
+        id: alpine
+        run: |
+          ALPINE_VERSION=$(docker run --rm alpine:latest cat /etc/alpine-release)
+          echo "version=$ALPINE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Alpine version: $ALPINE_VERSION"
+
+      - name: Build static transmission binary inside Alpine Linux container
+        env:
+          TRANSMISSION_VERSION: ${{ needs.check-version.outputs.version_num }}
+          ARCH: ${{ matrix.arch }}
+          SUFFIX: ""
+        run: |
+          mkdir -p "${{ github.workspace }}/output"
+          docker run --rm \
+            --platform "linux/${{ matrix.platform }}" \
+            -e "TRANSMISSION_VERSION=${TRANSMISSION_VERSION}" \
+            -e "ARCH=${ARCH}" \
+            -e "SUFFIX=${SUFFIX}" \
+            -v "${{ github.workspace }}/build.sh:/build.sh:ro" \
+            -v "${{ github.workspace }}/output:/output" \
+            alpine:latest /bin/sh /build.sh
+
+      - name: Verify binary is statically linked
+        run: |
+          FILE="output/transmission-linux-${{ matrix.arch }}"
+          file "$FILE"
+          if readelf -l "$FILE" | grep -q 'INTERP'; then
+            echo "ERROR: Binary is NOT statically linked!"
+            exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: transmission-linux-${{ matrix.arch }}
+          path: output/transmission-linux-${{ matrix.arch }}
+          if-no-files-found: error
+
+  # --------------------------------------------------------------------------
+  # Create a GitHub release with both binaries and a checksum file.
+  # The release tag mirrors the upstream transmission tag (e.g. 4.1.3).
+  # --------------------------------------------------------------------------
+  release:
+    name: Create GitHub Release
+    needs: [check-version, build]
+    if: needs.check-version.outputs.should_build == 'true'
+    runs-on: ubuntu-slim
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Delete existing release and tag if force_rebuild is set
+        if: inputs.force_rebuild == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.check-version.outputs.version }}
+        run: |
+          gh release delete "$VERSION" \
+            --repo "${{ github.repository }}" \
+            --yes \
+            --cleanup-tag \
+            2>/dev/null || true
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: transmission-linux-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        working-directory: artifacts
+        run: |
+          find . -maxdepth 1 -type f -name 'transmission-linux-*' -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > SHA256SUMS
+
+      - name: Compose release notes
+        env:
+          ALPINE_VERSION: ${{ needs.build.outputs.alpine_version }}
+          RELEASE_BODY: ${{ needs.check-version.outputs.release_body }}
+        run: |
+          printf '%s\n\n' "$RELEASE_BODY" > artifacts/RELEASE_BODY.md
+          printf -- '---\n\n**Static binaries built on:** Alpine Linux %s\n' "$ALPINE_VERSION" >> artifacts/RELEASE_BODY.md
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.check-version.outputs.version }}
+          name: Transmission ${{ needs.check-version.outputs.version }}
+          body_path: artifacts/RELEASE_BODY.md
+          files: |
+            artifacts/transmission-linux-*
+            artifacts/SHA256SUMS
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
