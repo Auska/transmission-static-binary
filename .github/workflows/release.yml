@@ -93,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, amd64-gracemont, amd64-tremont, amd64-v3, arm64]
+        arch: [amd64, amd64-gracemont, amd64-tremont, amd64-v3]
         include:
           - arch: amd64
             platform: amd64
@@ -103,8 +103,8 @@ jobs:
             platform: amd64
           - arch: amd64-v3
             platform: amd64
-          - arch: arm64
-            platform: arm64
+          # - arch: arm64
+          #   platform: arm64
     outputs:
       alpine_version: ${{ steps.alpine.outputs.version }}
 
