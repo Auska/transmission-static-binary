@@ -310,9 +310,10 @@ if [ -n "${TRANSMISSION_VERSION}" ]; then
     tar xf "transmission-${TRANSMISSION_VERSION}.tar.xz"
     cd "transmission-${TRANSMISSION_VERSION}"
 else
-    git clone --filter=blob:none --single-branch https://github.com/transmission/transmission.git
+    git clone --filter=blob:none --single-branch --recurse-submodules https://github.com/transmission/transmission.git
     cd transmission
     git checkout "$TRANSMISSION_SHA"
+    git submodule update --init --recursive
 fi
 
 cmake -B build -G Ninja \
