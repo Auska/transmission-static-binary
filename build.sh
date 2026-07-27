@@ -75,11 +75,76 @@ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig"
 export LD_LIBRARY_PATH="/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 # ---------------------------------------------------------------------------
-# Fetch latest dependency versions & download sources
+# Fetch latest dependency versions
 # ---------------------------------------------------------------------------
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-eval "$("${SCRIPT_DIR}/fetch-versions.sh")"
-"${SCRIPT_DIR}/download-sources.sh"
+MUSL_VERSION="1.2.6"
+
+RPMALLOC_VERSION=$(curl -fsS --retry 3 --retry-delay 5 "https://api.github.com/repos/mjansson/rpmalloc/releases/latest" | jq -r '.tag_name')
+echo "Latest rpmalloc version: ${RPMALLOC_VERSION}"
+
+ZLIB_NG_VERSION=$(curl -fsS --retry 3 --retry-delay 5 "https://api.github.com/repos/zlib-ng/zlib-ng/releases/latest" | jq -r '.tag_name')
+echo "Latest zlib-ng version: ${ZLIB_NG_VERSION}"
+
+LIBRESSL_VERSION=$(curl -fsS --retry 3 --retry-delay 5 "https://api.github.com/repos/libressl/portable/releases/latest" | jq -r '.tag_name' | sed 's/^v//')
+echo "Latest LibreSSL version: ${LIBRESSL_VERSION}"
+
+NGHTTP2_VERSION=$(curl -fsS --retry 3 --retry-delay 5 "https://api.github.com/repos/nghttp2/nghttp2/releases/latest" | jq -r '.tag_name' | sed 's/^v//')
+echo "Latest nghttp2 version: ${NGHTTP2_VERSION}"
+
+LIBPSL_VERSION=$(curl -fsS --retry 3 --retry-delay 5 "https://api.github.com/repos/rockdaboot/libpsl/releases/latest" | jq -r '.tag_name')
+echo "Latest libpsl version: ${LIBPSL_VERSION}"
+
+CARES_VERSION=$(curl -fsS --retry 3 --retry-delay 5 "https://api.github.com/repos/c-ares/c-ares/releases/latest" | jq -r '.tag_name' | sed 's/^v//')
+echo "Latest c-ares version: ${CARES_VERSION}"
+
+CURL_TAG=$(curl -fsS --retry 3 --retry-delay 5 "https://api.github.com/repos/curl/curl/releases/latest" | jq -r '.tag_name')
+CURL_VERSION=$(echo "$CURL_TAG" | sed 's/curl-//' | tr '_' '.')
+echo "Latest curl version: ${CURL_VERSION}"
+
+# ---------------------------------------------------------------------------
+# Download and extract all dependency sources
+# ---------------------------------------------------------------------------
+mkdir -p /build
+
+# musl
+cd /build
+curl -fsSLO --retry 3 --retry-delay 5 "https://git.musl-libc.org/cgit/musl/snapshot/musl-${MUSL_VERSION}.tar.gz"
+tar xf "musl-${MUSL_VERSION}.tar.gz"
+
+# rpmalloc
+cd /build
+curl -fsSLO --retry 3 --retry-delay 5 "https://github.com/mjansson/rpmalloc/archive/refs/tags/${RPMALLOC_VERSION}.tar.gz"
+tar xf "${RPMALLOC_VERSION}.tar.gz"
+
+# zlib-ng
+cd /build
+curl -fsSLO --retry 3 --retry-delay 5 "https://github.com/zlib-ng/zlib-ng/archive/refs/tags/${ZLIB_NG_VERSION}.tar.gz"
+tar xf "${ZLIB_NG_VERSION}.tar.gz"
+
+# LibreSSL
+cd /build
+curl -fsSLO --retry 3 --retry-delay 5 "https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-${LIBRESSL_VERSION}.tar.gz"
+tar xf "libressl-${LIBRESSL_VERSION}.tar.gz"
+
+# nghttp2
+cd /build
+curl -fsSLO --retry 3 --retry-delay 5 "https://github.com/nghttp2/nghttp2/archive/refs/tags/v${NGHTTP2_VERSION}.tar.gz"
+tar xf "v${NGHTTP2_VERSION}.tar.gz"
+
+# libpsl
+cd /build
+curl -fsSLO --retry 3 --retry-delay 5 "https://github.com/rockdaboot/libpsl/releases/download/${LIBPSL_VERSION}/libpsl-${LIBPSL_VERSION}.tar.gz"
+tar xf "libpsl-${LIBPSL_VERSION}.tar.gz"
+
+# c-ares
+cd /build
+curl -fsSLO --retry 3 --retry-delay 5 "https://github.com/c-ares/c-ares/releases/download/v${CARES_VERSION}/c-ares-${CARES_VERSION}.tar.gz"
+tar xf "c-ares-${CARES_VERSION}.tar.gz"
+
+# curl
+cd /build
+curl -fsSLO --retry 3 --retry-delay 5 "https://github.com/curl/curl/archive/refs/tags/curl-${CURL_VERSION//./_}.tar.gz"
+tar xf "curl-${CURL_VERSION//./_}.tar.gz"
 
 # Ensure subsequent builds find our musl libc first
 export LIBRARY_PATH="/usr/local/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
