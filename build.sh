@@ -321,7 +321,7 @@ fi
 
 cmake -B build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=/usr/local \
+    -DCMAKE_INSTALL_PREFIX=/opt/transmission \
     -DBUILD_SHARED_LIBS=OFF \
     -DENABLE_DAEMON=ON \
     -DENABLE_GTK=OFF \
@@ -359,13 +359,19 @@ cmake --build build -j"$(nproc)"
 cmake --install build
 
 # ---------------------------------------------------------------------------
-# 11. Copy and verify the output binary
+# 11. Strip binaries and package the installation directory
 # ---------------------------------------------------------------------------
 OUTPUT="/output/transmission-linux-${ARCH}${SUFFIX}"
 
-cp /usr/local/bin/transmission-daemon "${OUTPUT}"
-strip "${OUTPUT}"
+# Strip all binaries in the installation directory
+if [ -d /opt/transmission/bin ]; then
+    find /opt/transmission/bin -type f -executable -exec strip {} \; 2>/dev/null || true
+fi
+
+# Create a tar.xz archive of the entire installation directory
+cd /opt
+tar -cJf "${OUTPUT}.tar.xz" transmission
 
 echo "=== Build complete ==="
-file "${OUTPUT}"
-ls -lh "${OUTPUT}"
+file "${OUTPUT}.tar.xz"
+ls -lh "${OUTPUT}.tar.xz"

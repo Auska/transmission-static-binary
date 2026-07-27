@@ -168,7 +168,8 @@ jobs:
 
       - name: Verify binary is statically linked
         run: |
-          FILE="output/transmission-linux-${{ matrix.arch }}-daily-${{ needs.check-version.outputs.build_id }}"
+          tar -xJf "output/transmission-linux-${{ matrix.arch }}-daily-${{ needs.check-version.outputs.build_id }}.tar.xz" -C output
+          FILE="output/transmission/bin/transmission-daemon"
           file "$FILE"
           if readelf -l "$FILE" | grep -q 'INTERP'; then
             echo "ERROR: Binary is NOT statically linked!"
@@ -179,7 +180,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: transmission-linux-${{ matrix.arch }}-daily-${{ needs.check-version.outputs.build_id }}
-          path: output/transmission-linux-${{ matrix.arch }}-daily-${{ needs.check-version.outputs.build_id }}
+          path: output/transmission-linux-${{ matrix.arch }}-daily-${{ needs.check-version.outputs.build_id }}.tar.xz
           if-no-files-found: error
 
   # --------------------------------------------------------------------------
