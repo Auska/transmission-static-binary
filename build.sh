@@ -69,7 +69,8 @@ apk add --no-cache \
     linux-headers \
     ninja \
     pkgconf \
-    python3
+    python3 \
+    xz
 
 export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig"
 export LD_LIBRARY_PATH="/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
