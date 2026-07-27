@@ -110,6 +110,7 @@ mkdir -p /build
 # musl
 cd /build
 curl -fsSLO --retry 3 --retry-delay 5 "https://github.com/ifduyue/musl/archive/refs/tags/v${MUSL_VERSION}.tar.gz"
+MUSL_SRC_DIR=$(tar tf "v${MUSL_VERSION}.tar.gz" | head -1 | cut -d/ -f1)
 tar xf "v${MUSL_VERSION}.tar.gz"
 
 # rpmalloc
@@ -156,7 +157,7 @@ export CPATH="/usr/local/include${CPATH:+:$CPATH}"
 # ---------------------------------------------------------------------------
 echo "Building musl libc ${MUSL_VERSION}"
 
-cd "/build/musl-v${MUSL_VERSION}"
+cd "/build/${MUSL_SRC_DIR}"
 
 ./configure \
     --prefix=/usr/local \
