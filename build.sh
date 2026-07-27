@@ -272,6 +272,8 @@ autoreconf -fi
     --disable-hsts \
     --enable-ares \
     --without-brotli \
+    --disable-docs \
+    --disable-ipfs \
     --with-openssl \
     --with-nghttp2 \
     --without-nghttp3 \
