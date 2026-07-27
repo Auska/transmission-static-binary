@@ -138,6 +138,8 @@ jobs:
             -e "ARCH=${ARCH}" \
             -e "SUFFIX=${SUFFIX}" \
             -v "${{ github.workspace }}/build.sh:/build.sh:ro" \
+            -v "${{ github.workspace }}/fetch-versions.sh:/fetch-versions.sh:ro" \
+            -v "${{ github.workspace }}/download-sources.sh:/download-sources.sh:ro" \
             -v "${{ github.workspace }}/output:/output" \
             alpine:latest /bin/sh /build.sh
 
